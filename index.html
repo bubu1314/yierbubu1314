@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>闯关小游戏</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+        body{
+            background:#111;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            padding:10px;
+            color:#fff;
+            font-family:system-ui;
+            overflow: hidden;
+            height: 100vh;
+        }
+        #game{
+            border:2px solid #444;
+            max-width: 100%;
+            height: auto;
+            cursor: pointer;
+        }
+        .tip{margin:8px 0; font-size: 14px;}
+        .controls{
+            position: fixed;
+            bottom: 30px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: none;
+        }
+        .btn-group{
+            display: flex;
+            gap: 15px;
+            pointer-events: auto;
+        }
+        .ctrl-btn{
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.4);
+            color: #fff;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            touch-action: none;
+        }
+        .ctrl-btn:active{
+            background: rgba(255,255,255,0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="tip">左右移动 | 点击跳跃 | 共3关</div>
+    <canvas id="game" width="600" height="400"></canvas>
+
+    <div class="controls">
+        <div class="btn-group">
+            <div class="ctrl-btn" id="btnLeft">◀</div>
+            <div class="ctrl-btn" id="btnRight">▶</div>
+        </div>
+        <div class="btn-group">
+            <div class="ctrl-btn" id="btnJump">跳</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game')
+        const ctx = canvas.getContext('2d')
+        const W = 600, H = 400
+
+        // ========== 游戏状态 ==========
+        let gameState = 'start' // start | playing | win | reward
+
+        const startBtn = {
+            x: W/2 - 100,
+            y: H/2 - 30,
+            w: 200,
+            h: 60
+        }
+        const rewardBtn = {
+            x: W/2 - 100,
+            y: H/2 + 10,
+            w: 200,
+            h: 60
+        }
+        const restartBtn = {
+            x: W/2 - 100,
+            y: H/2 + 30,
+            w: 200,
+            h: 60
+        }
+
+        // ========== 图片资源 ==========
+        // 开始界面背景
+        const startBgImg = new Image()
+        startBgImg.crossOrigin = 'anonymous'
+        startBgImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/SrZP/2048X1862/1EB54997-D6CF-4BDF-A2C7-D54AA296BC47.jpeg'
+        let startBgLoaded = false
+        startBgImg.onload = () => startBgLoaded = true
+
+        // 结束界面背景
+        const endBgImg = new Image()
+        endBgImg.crossOrigin = 'anonymous'
+        endBgImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/gZSL/2046X1959/89BE2FE7-E048-4310-960E-2182CF4326ED.jpeg'
+        let endBgLoaded = false
+        endBgImg.onload = () => endBgLoaded = true
+
+        // 奖励页左侧图片
+        const rewardLeftImg = new Image()
+        rewardLeftImg.crossOrigin = 'anonymous'
+        rewardLeftImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/WVfr/939X905/IMG_9071.jpeg'
+        let rewardLeftLoaded = false
+        rewardLeftImg.onload = () => rewardLeftLoaded = true
+
+        // 奖励页右侧图片
+        const rewardRightImg = new Image()
+        rewardRightImg.crossOrigin = 'anonymous'
+        rewardRightImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/6Mm8/525X484/IMG_9070.jpeg'
+        let rewardRightLoaded = false
+        rewardRightImg.onload = () => rewardRightLoaded = true
+
+        // 玩家图片
+        const playerImg = new Image()
+        playerImg.crossOrigin = 'anonymous'
+        playerImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/sKj2/968X1088/IMG_9062.jpeg'
+        let playerImgLoaded = false
+        let playerImgError = false
+        playerImg.onload = () => playerImgLoaded = true
+        playerImg.onerror = () => playerImgError = true
+
+        // 前两关终点图片
+        const goalImg = new Image()
+        goalImg.crossOrigin = 'anonymous'
+        goalImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/vA5s/695X788/IMG_9063.jpeg'
+        let goalImgLoaded = false
+        let goalImgError = false
+        goalImg.onload = () => goalImgLoaded = true
+        goalImg.onerror = () => goalImgError = true
+
+        // 第三关终点图片
+        const finalGoalImg = new Image()
+        finalGoalImg.crossOrigin = 'anonymous'
+        finalGoalImg.src = 'https://ss1.eisite.cn/autoupload/fr/TQOARfaWeC5zmRL4Lyo1o3tcaAwcC0wdySauaQrJfXOyl5f0KlZfm6UsKj-HyTuv/20261031/gSyj/749X945/IMG_9065.jpeg'
+        let finalGoalImgLoaded = false
+        let finalGoalImgError = false
+        finalGoalImg.onload = () => finalGoalImgLoaded = true
+        finalGoalImg.onerror = () => finalGoalImgError = true
+
+        // ========== 游戏属性 ==========
+        let player = {
+            x: 50,
+            y: 280,
+            w: 40,
+            h: 50,
+            speed: 5,
+            vy: 0,
+            onGround: false
+        }
+
+        const gravity = 0.8
+        const jumpForce = -15
+        let levelIndex = 0
+
+        const clouds = [
+            {x: 100, y: 80, r: 30, speed: 0.3},
+            {x: 420, y: 60, r: 25, speed: 0.2},
+            {x: 250, y: 110, r: 22, speed: 0.25}
+        ]
+
+        const levels = [
+            {
+                platforms: [[0,350,150,20],[200,300,120,20],[380,250,120,20]],
+                goal:[520,220,40,40],
+                spikes:[]
+            },
+            {
+                platforms: [[0,350,120,20],[180,290,100,20],[340,230,100,20],[480,170,100,20]],
+                goal:[520,140,40,40],
+                spikes:[[250,270,25,25]]
+            },
+            {
+                platforms: [[0,350,100,20],[150,300,80,20],[280,240,80,20],[400,180,80,20],[500,120,80,20]],
+                goal:[520,70,44,44],
+                spikes:[[200,280,25,25],[330,220,25,25]]
+            }
+        ]
+
+        const keys = {}
+        document.addEventListener('keydown', e => {
+            keys[e.code] = true
+            if(e.code === 'Space' && player.onGround && gameState === 'playing') {
+                player.vy = jumpForce
+                player.onGround = false
+            }
+            if(e.code === 'KeyR' && gameState === 'playing') resetPlayer()
+        })
+        document.addEventListener('keyup', e => keys[e.code] = false)
+
+        function bindTouch(id, code){
+            const btn = document.getElementById(id)
+            btn.addEventListener('touchstart', e => {
+                e.preventDefault()
+                if(gameState !== 'playing') return
+                keys[code] = true
+                if(code === 'Space' && player.onGround) {
+                    player.vy = jumpForce
+                    player.onGround = false
+                }
+            })
+            btn.addEventListener('touchend', e => {
+                e.preventDefault()
+                keys[code] = false
+            })
+            btn.addEventListener('mousedown', () => {
+                if(gameState !== 'playing') return
+                keys[code] = true
+                if(code === 'Space' && player.onGround) {
+                    player.vy = jumpForce
+                    player.onGround = false
+                }
+            })
+            btn.addEventListener('mouseup', () => keys[code] = false)
+        }
+        bindTouch('btnLeft', 'ArrowLeft')
+        bindTouch('btnRight', 'ArrowRight')
+        bindTouch('btnJump', 'Space')
+
+        // ========== 点击坐标转换 ==========
+        function getCanvasPos(e){
+            const rect = canvas.getBoundingClientRect()
+            const scaleX = W / rect.width
+            const scaleY = H / rect.height
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            }
+        }
+
+        function pointInRect(px, py, rect){
+            return px >= rect.x && px <= rect.x + rect.w
+                && py >= rect.y && py <= rect.y + rect.h
+        }
+
+        // ========== 全局点击处理 ==========
+        function handleCanvasClick(e){
+            e.preventDefault()
+            const pos = getCanvasPos(e)
+
+            if(gameState === 'start'){
+                if(pointInRect(pos.x, pos.y, startBtn)){
+                    gameState = 'playing'
+                    levelIndex = 0
+                    resetPlayer()
+                }
+            }
+            else if(gameState === 'win'){
+                if(pointInRect(pos.x, pos.y, rewardBtn)){
+                    gameState = 'reward'
+                }
+            }
+            else if(gameState === 'reward'){
+                if(pointInRect(pos.x, pos.y, restartBtn)){
+                    gameState = 'start'
+                    levelIndex = 0
+                    resetPlayer()
+                }
+            }
+        }
+
+        canvas.addEventListener('click', handleCanvasClick)
+        canvas.addEventListener('touchstart', handleCanvasClick)
+
+        function resetPlayer(){
+            player.x = 50
+            player.y = 280
+            player.vy = 0
+            player.onGround = false
+        }
+
+        function rectOverlap(a, b){
+            return a[0] < b[0] + b[2]
+                && a[0] + a[2] > b[0]
+                && a[1] < b[1] + b[3]
+                && a[1] + a[3] > b[1]
+        }
+
+        function drawSpike(x, y, w, h){
+            ctx.fillStyle = '#555'
+            ctx.fillRect(x, y + h - 5, w, 5)
+            ctx.fillStyle = '#c0392b'
+            const count = 3
+            const sw = w / count
+            for(let i = 0; i < count; i++){
+                ctx.beginPath()
+                ctx.moveTo(x + i * sw, y + h)
+                ctx.lineTo(x + i * sw + sw / 2, y)
+                ctx.lineTo(x + (i + 1) * sw, y + h)
+                ctx.closePath()
+                ctx.fill()
+            }
+            ctx.fillStyle = '#e74c3c'
+            for(let i = 0; i < count; i++){
+                ctx.beginPath()
+                ctx.moveTo(x + i * sw + sw * 0.35, y + h)
+                ctx.lineTo(x + i * sw + sw / 2, y + 3)
+                ctx.lineTo(x + i * sw + sw * 0.65, y + h)
+                ctx.closePath()
+                ctx.fill()
+            }
+        }
+
+        function drawGoal(rect){
+            const [x, y, w, h] = rect
+            if(levelIndex < 2){
+                if(goalImgLoaded){
+                    const scale = Math.min(w / goalImg.width, h / goalImg.height)
+                    const drawW = goalImg.width * scale
+                    const drawH = goalImg.height * scale
+                    const drawX = x + (w - drawW) / 2
+                    const drawY = y + (h - drawH) / 2
+                    ctx.drawImage(goalImg, drawX, drawY, drawW, drawH)
+                } else {
+                    ctx.fillStyle = goalImgError ? '#9b59b6' : '#8e44ad'
+                    ctx.fillRect(x, y, w, h)
+                }
+            } else {
+                if(finalGoalImgLoaded){
+                    const scale = Math.min(w / finalGoalImg.width, h / finalGoalImg.height)
+                    const drawW = finalGoalImg.width * scale
+                    const drawH = finalGoalImg.height * scale
+                    const drawX = x + (w - drawW) / 2
+                    const drawY = y + (h - drawH) / 2
+                    ctx.drawImage(finalGoalImg, drawX, drawY, drawW, drawH)
+                } else {
+                    ctx.fillStyle = finalGoalImgError ? '#9b59b6' : '#8e44ad'
+                    ctx.fillRect(x, y, w, h)
+                }
+            }
+        }
+
+        // ========== 开始界面 ==========
+        function drawStartScreen(){
+            if(startBgLoaded){
+                const ratio = Math.max(W / startBgImg.width, H / startBgImg.height)
+                const drawW = startBgImg.width * ratio
+                const drawH = startBgImg.height * ratio
+                const drawX = (W - drawW) / 2
+                const drawY = (H - drawH) / 2
+                ctx.drawImage(startBgImg, drawX, drawY, drawW, drawH)
+            } else {
+                ctx.fillStyle = '#1a1a2e'
+                ctx.fillRect(0, 0, W, H)
+            }
+
+            ctx.fillStyle = 'rgba(0,0,0,0.35)'
+            ctx.fillRect(0, 0, W, H)
+
+            ctx.fillStyle = '#fff'
+            ctx.font = 'bold 42px sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText('闯关小游戏', W/2, H/2 - 80)
+
+            ctx.fillStyle = 'rgba(255, 100, 100, 0.9)'
+            ctx.beginPath()
+            ctx.roundRect(startBtn.x, startBtn.y, startBtn.w, startBtn.h, 12)
+            ctx.fill()
+
+            ctx.fillStyle = '#fff'
+            ctx.font = 'bold 26px sans-serif'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('开始游戏', W/2, H/2)
+            ctx.textAlign = 'left'
+            ctx.textBaseline = 'alphabetic'
+        }
+
+        // ========== 结束界面 ==========
+        function drawWinScreen(){
+            if(endBgLoaded){
+                const ratio = Math.max(W / endBgImg.width, H / endBgImg.height)
+                const drawW = endBgImg.width * ratio
+                const drawH = endBgImg.height * ratio
+                const drawX = (W - drawW) / 2
+                const drawY = (H - drawH) / 2
+                ctx.drawImage(endBgImg, drawX, drawY, drawW, drawH)
+            } else {
+                ctx.fillStyle = '#2d1b4e'
+                ctx.fillRect(0, 0, W, H)
+            }
+
+            ctx.fillStyle = 'rgba(0,0,0,0.3)'
+            ctx.fillRect(0, 0, W, H)
+
+            ctx.fillStyle = 'rgba(255, 100, 100, 0.95)'
+            ctx.beginPath()
+            ctx.roundRect(rewardBtn.x, rewardBtn.y, rewardBtn.w, rewardBtn.h, 12)
+            ctx.fill()
+
+            ctx.fillStyle = '#fff'
+            ctx.font = 'bold 26px sans-serif'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('选择奖励', W/2, rewardBtn.y + rewardBtn.h/2)
+            ctx.textAlign = 'left'
+            ctx.textBaseline = 'alphabetic'
+        }
+
+        // ========== 奖励页 ==========
+        function drawRewardScreen(){
+            ctx.fillStyle = '#1a1a2e'
+            ctx.fillRect(0, 0, W, H)
+
+            // 左侧奖励图片
+            if(rewardLeftLoaded){
+                const targetH = 180
+                const scale = targetH / rewardLeftImg.height
+                const drawW = rewardLeftImg.width * scale
+                const drawH = targetH
+                const drawX = 35
+                const drawY = H/2 - drawH/2
+                ctx.drawImage(rewardLeftImg, drawX, drawY, drawW, drawH)
+            }
+
+            // 右侧奖励图片
+            if(rewardRightLoaded){
+                const targetH = 180
+                const scale = targetH / rewardRightImg.height
+                const drawW = rewardRightImg.width * scale
+                const drawH = targetH
+                const drawX = W - 35 - drawW
+                const drawY = H/2 - drawH/2
+                ctx.drawImage(rewardRightImg, drawX, drawY, drawW, drawH)
+            }
+
+            // 中间文字
+            ctx.fillStyle = '#ffd700'
+            ctx.font = 'bold 32px sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText('🎉 恭喜获得奖励！', W/2, H/2 - 60)
+
+            ctx.fillStyle = '#fff'
+            ctx.font = '18px sans-serif'
+            ctx.fillText('成功救出布布，可解锁任一奖励', W/2, H/2 - 15)
+
+            // 再玩一次按钮
+            ctx.fillStyle = 'rgba(255, 100, 100, 0.95)'
+            ctx.beginPath()
+            ctx.roundRect(restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h, 12)
+            ctx.fill()
+
+            ctx.fillStyle = '#fff'
+            ctx.font = 'bold 26px sans-serif'
+            ctx.textBaseline = 'middle'
+            ctx.fillText('再玩一次', W/2, restartBtn.y + restartBtn.h/2)
+            ctx.textAlign = 'left'
+            ctx.textBaseline = 'alphabetic'
+        }
+
+        // ========== 主循环 ==========
+        function loop(){
+            if(gameState === 'start'){
+                drawStartScreen()
+                requestAnimationFrame(loop)
+                return
+            }
+
+            if(gameState === 'win'){
+                drawWinScreen()
+                requestAnimationFrame(loop)
+                return
+            }
+
+            if(gameState === 'reward'){
+                drawRewardScreen()
+                requestAnimationFrame(loop)
+                return
+            }
+
+            const lv = levels[levelIndex]
+
+            // 天空背景
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, H)
+            skyGrad.addColorStop(0, '#87CEEB')
+            skyGrad.addColorStop(1, '#B0E0E6')
+            ctx.fillStyle = skyGrad
+            ctx.fillRect(0, 0, W, H)
+
+            // 动态云朵
+            ctx.fillStyle = 'rgba(255,255,255,0.85)'
+            for(let cloud of clouds){
+                cloud.x += cloud.speed
+                if(cloud.x - cloud.r > W) cloud.x = -cloud.r
+                ctx.beginPath()
+                ctx.arc(cloud.x, cloud.y, cloud.r, 0, Math.PI * 2)
+                ctx.arc(cloud.x + cloud.r * 0.8, cloud.y - cloud.r * 0.2, cloud.r * 0.8, 0, Math.PI * 2)
+                ctx.arc(cloud.x + cloud.r * 1.5, cloud.y, cloud.r * 0.7, 0, Math.PI * 2)
+                ctx.fill()
+            }
+
+            // 水平移动
+            if(keys['ArrowLeft']) player.x -= player.speed
+            if(keys['ArrowRight']) player.x += player.speed
+
+            // 水平碰撞
+            const pRectH = [player.x, player.y, player.w, player.h]
+            for(let p of lv.platforms){
+                if(rectOverlap(pRectH, p)){
+                    if(player.speed > 0 && player.x + player.w - player.speed <= p[0]){
+                        player.x = p[0] - player.w
+                    } else if(player.speed < 0 && player.x - player.speed >= p[0] + p[2]){
+                        player.x = p[0] + p[2]
+                    }
+                }
+            }
+
+            // 垂直移动
+            player.vy += gravity
+            player.y += player.vy
+            player.onGround = false
+
+            // 垂直碰撞
+            const pRectV = [player.x, player.y, player.w, player.h]
+            for(let p of lv.platforms){
+                if(rectOverlap(pRectV, p)){
+                    if(player.vy > 0){
+                        player.y = p[1] - player.h
+                        player.vy = 0
+                        player.onGround = true
+                    } else if(player.vy < 0){
+                        player.y = p[1] + p[3]
+                        player.vy = 0
+                    }
+                }
+            }
+
+            if(player.x < 0) player.x = 0
+            if(player.x > W - player.w) player.x = W - player.w
+            if(player.y > H) resetPlayer()
+
+            // 尖刺碰撞
+            const pRect = [player.x, player.y, player.w, player.h]
+            for(let s of lv.spikes){
+                if(rectOverlap(pRect, s)) resetPlayer()
+            }
+
+            // 终点判定
+            if(rectOverlap(pRect, lv.goal)){
+                levelIndex++
+                if(levelIndex >= levels.length){
+                    gameState = 'win'
+                    requestAnimationFrame(loop)
+                    return
+                }
+                resetPlayer()
+            }
+
+            // 绘制平台
+            for(let p of lv.platforms){
+                const [px, py, pw, ph] = p
+                ctx.fillStyle = '#8B5A2B'
+                ctx.fillRect(px, py, pw, ph)
+                ctx.fillStyle = '#5CB85C'
+                ctx.fillRect(px, py, pw, 5)
+            }
+
+            // 绘制尖刺
+            for(let s of lv.spikes){
+                drawSpike(s[0], s[1], s[2], s[3])
+            }
+
+            // 绘制终点
+            drawGoal(lv.goal)
+
+            // 绘制玩家
+            if(playerImgLoaded){
+                const scale = Math.min(player.w / playerImg.width, player.h / playerImg.height)
+                const drawW = playerImg.width * scale
+                const drawH = playerImg.height * scale
+                const drawX = player.x + (player.w - drawW) / 2
+                const drawY = player.y + (player.h - drawH) / 2
+                ctx.drawImage(playerImg, drawX, drawY, drawW, drawH)
+            } else {
+                ctx.fillStyle = playerImgError ? '#9b59b6' : '#3498db'
+                ctx.fillRect(player.x, player.y, player.w, player.h)
+            }
+
+            // UI文字
+            ctx.fillStyle = '#fff'
+            ctx.font = '24px sans-serif'
+            ctx.fillText(`关卡 ${levelIndex + 1}`, 10, 30)
+
+            requestAnimationFrame(loop)
+        }
+
+        loop()
+    </script>
+</body>
+</html>
